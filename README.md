@@ -15,18 +15,17 @@ SUI is meant to be operated in a very imperative manner, there no objects in the
 
 SUI provides a pseudo windowing system called framing to make it easier to group and align elements. Frames are pushed into a stack and any sui draws done inside a frame will use that frame's position/size to determine placement. This combined with the aligning system makes for a fairly powerful tool for creating the layouts you need. Example:
 ```
-// Let's assume the draw area is from [0, 0] to [640, 480]
-vector SCREEN_SIZE = [640, 480];
-
 void() draw_our_frame =
 {
   // Sets Horizontal align to center, sets Vertical align to center.
   sui_set_align([SUI_ALIGN_CENTER, SUI_ALIGN_CENTER]); 
-  // Create a new frame in the dead center of the screen with 0, 0 (because of previous align), with size 100*100
+  // Push a new frame in the center of the screen using position [0, 0], with size 100*100
   sui_push_frame([0, 0], [100, 100]);
-  // Set align to top left corner (of our current frame)
-  sui_set_align([SUI_ALIGN_START, SUI_ALIGN_START]);
-  // Draw a red box in the top-left corner of the frame, which is at screen_center - frame_size * 0.5
+  // Set align to bottom right corner (of our current frame)
+  sui_set_align([SUI_ALIGN_END, SUI_ALIGN_END]);
+  // Draw a 50*50 sized red box in the bottom-right corner of the frame.
+  // It will have its bottom-right corner at the bottom-right corner of the frame, which means
+  // the top left corner will be at the center of the frame.
   sui_fill([0, 0], [50, 50], [1.0, 0, 0], 1.0, 0);
   // Done with this frame. We could do more frames inside frames and the transforms would stack.
   sui_pop_frame();
