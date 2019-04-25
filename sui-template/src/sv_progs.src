@@ -1,0 +1,9 @@
+../qwprogs.dat
+sv_defs.qc
+sh_customdefs.qc
+sv_customdefs.qc
+sv_combat.qc
+sv_enemies.qc
+sv_triggers.qc
+sv_player.qc
+sv_main.qc

@@ -1,0 +1,4 @@
+game sui-template
+name "Sui Template"
+basegame sui-template
+disablehomedir 1

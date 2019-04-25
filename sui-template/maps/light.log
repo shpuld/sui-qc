@@ -1,0 +1,54 @@
+---- light / ericw-tools v0.18 ----
+extra 2x2 sampling enabled
+Raytracing backend: Embree
+running with 4 threads
+LoadBSPFile: 'test.bsp'
+BSP is version 29
+--- LoadEntities ---
+WARNING: Not 3 values for sunlight_mangle
+2 entities read, 0 are lights.
+--- OptionsSummary ---
+    "dirt" was set to "1" from commandline
+    "dirtscale" was set to "1.000000" from commandline
+    "minlight_dirt" was set to "1" from map
+    "bounce" was set to "1" from commandline
+    "bouncescale" was set to "0.500000" from commandline
+    "sunlight" was set to "300.000000" from map
+    "sunlight_color" was set to "253 245 223" from map
+    "sunlight2" was set to "150.000000" from map
+    "sunlight_dirt" was set to "1.000000" from map
+    "sunlight2_dirt" was set to "1.000000" from map
+    "sunlight_mangle" was set to "0.122788 0.122788 -0.984808" from map
+Embree_TraceInit: Embree version: 2.15.0
+Embree_TraceInit:
+	31 sky faces
+	20 solid faces
+	0 filtered faces
+	0 shadow-casting skip faces
+SetupLights: 0 initial lights
+SetupLights: 0 after surface lights
+SetupLights: 0 after jittering
+using 65 suns for _sunlight2. total light: 150.000000 color: 255.000000 255.000000 255.000000
+--- EstimateLightVisibility ---
+
+Final count: 0 lights 66 suns in use.
+Colored light entities/settings detected: .lit output enabled.
+--- SetupDirt ---
+       48 dirtmap vectors
+--- LightWorld ---
+--- MakeTextureColors ---
+--- MakeBounceLights ---
+0....1....2....3....4....5....6....7....8....9....
+0....1....2....3....4....5....6....7....8....9....
+Lighting Completed.
+
+lightdatasize: 1213
+Writing test.lit
+0 switchable light styles (32 max)
+Writing test.bsp as BSP version 29
+0.204 seconds elapsed
+
+stats:
+0.000000 lights tested, 0.000000 hits per sample point
+5.254310 bounce lights tested, 5.234748 hits per sample point
+0 empty lightmaps

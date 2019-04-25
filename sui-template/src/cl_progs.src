@@ -1,0 +1,9 @@
+../csprogs.dat
+cl_defs.qc
+sh_customdefs.qc
+cl_customdefs.qc
+sui_sys.qc
+cl_menu.qc
+cl_player.qc
+cl_hud.qc
+cl_main.qc
