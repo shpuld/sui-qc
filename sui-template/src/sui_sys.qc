@@ -487,7 +487,7 @@ const float KB_DIR_DOWN = 2;
 const float KB_DIR_LEFT = 4;
 const float KB_DIR_RIGHT = 8;
 
-void(float kb_dir) sui_hijack_kb_move =
+void(float kb_dir) sui_hijack_kb_nav =
 {
 	_sui_hijacked_dirs |= kb_dir;
 }
@@ -1107,8 +1107,8 @@ float(string id, vector pos, vector size, vector minmaxsteps, float value, void(
 	}
 	else if (sui_is_hovered(id))
 	{
-		sui_hijack_kb_move(KB_DIR_LEFT);
-		sui_hijack_kb_move(KB_DIR_RIGHT);
+		sui_hijack_kb_nav(KB_DIR_LEFT);
+		sui_hijack_kb_nav(KB_DIR_RIGHT);
 
 		float step = minmaxsteps[2] > 0
 			? (minmaxsteps[1] - minmaxsteps[0]) / minmaxsteps[2]

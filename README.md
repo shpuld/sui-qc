@@ -97,9 +97,9 @@ Same as earlier, but sets the point to the top-left corner of the box. If align 
 
 SUI keeps track of which things are clicked/held/released/focused/etc on by using action elements with unique string ids.
 
-`void(vector pos, vector size, string id, void(float index, vector click_ratios) action) sui_action_element`
+`void(vector pos, vector size, string id, void(float index, vector click_ratios) action, float is_kb_nav_disabled = FALSE) sui_action_element`
 
-Creates a clickable area at `pos` with `size`. The `id` should be unique per frame.  The `action` function can be used for instant effects that you want on click and want the relative position of where the element was clicked on, but most often you can use `sui_noop` for bypassing this and using the other click/hold/hover/release checks for mapping actions to this element.
+Creates a clickable area at `pos` with `size`. The `id` should be unique per frame.  The `action` function can be used for instant effects that you want on click and want the relative position of where the element was clicked on, but most often you can use `sui_noop` for bypassing this and using the other click/hold/hover/release checks for mapping actions to this element. Use `is_kb_nav_disabled` if you don't want this element to be selectable with keyboard/controller (like scrollbars for example).
 
 `float() sui_click_held`
 
@@ -143,6 +143,32 @@ Returns TRUE when a hold on element with id was released.
 `float(string id) sui_release_index`
 
 Same as `sui_click_index` but for releasing.
+
+`float(float keycode) sui_listen_scan`
+
+Listen to a keycode (like K_ENTER or K_GP_A etc), returns TRUE if the key was pressed. By default if you listen to a key, it will not get passed through sui_input_event.
+
+`float(string command) sui_listen_command`
+
+Same as `sui_listen_scan` but with a command like `+attack` or `togglemenu` for example.
+
+`float() sui_listen_up`
+`float() sui_listen_down`
+`float() sui_listen_left`
+`float() sui_listen_right`
+`float() sui_listen_confirm`
+`float() sui_listen_back`
+
+These all listen to various navigation actions from multiple sources, keyboard, dpad, move commands, etc. Can be especially useful to listen to back if you want escape to go back a menu instead of triggering `togglemenu` command in your menu qc.
+
+`void(float kb_dir) sui_hijack_kb_nav`
+
+If you want keyboard navigation to not actually navigate, you call this. Takes in a `KB_DIR_` constant. Used in sliders for example to prevent left/right navigation in order to move the slider instead.
+
+`void(string id) sui_set_default_kb_focus`
+
+Set the element id you want to be focused initially for keyboard navigation.
+
 
 ## Builtin interactable elements
 
