@@ -188,11 +188,15 @@ struct _action_element_t {
 	vector pos;
 	vector size;
 	string id;
+	float kb_nav_disabled;
 	void(float index, vector click_ratios) action;
 };
 const float MAX_ACTION_ELEMENTS = 256;
 _action_element_t _action_elements[MAX_ACTION_ELEMENTS];
 float _action_elements_index;
+
+float _cursor_is_mouse_active;
+float _cursor_mouse_activate_accum;
 
 
 // TODO better naming
@@ -351,15 +355,40 @@ float(float num) mouse_action_sanity =
 	return FALSE;
 };
 
+void() activate_mouse_cursor =
+{
+	_cursor_is_mouse_active = TRUE;
+	_cursor_mouse_activate_accum = 0;
+};
+
+void() deactivate_mouse_cursor =
+{
+	_cursor_is_mouse_active = FALSE;
+	_cursor_mouse_activate_accum = 0;
+};
+
 // mouse move, mostly just update hovers
 
-void(vector pos) _sui_mouse_move =
+void(vector pos, float is_mouse = TRUE) _sui_mouse_move =
 {
+	vector old_pos = _cursor_position;
 	_cursor_position = pos;
 	_action_element_count_sanity();
 	
 	// Reset hover, it'll be back to what it used to be before draw gets called if mouse is still on same element
 	_hover_action_count = 0;
+
+	if (is_mouse)
+	{
+		if (!_cursor_is_mouse_active)
+		{
+			printf("mouse moved to %v\n", pos);
+			_cursor_mouse_activate_accum += vlen(pos - old_pos);
+			if (_cursor_mouse_activate_accum > 10)
+				activate_mouse_cursor();
+			return;
+		}
+	}
 	
 	// Iterate front to back, so topmost element gets the click/hover
 	for (int i = min(MAX_ACTION_ELEMENTS, _action_elements_index) - 1; i >= 0; i--)
@@ -377,19 +406,35 @@ void(vector pos) _sui_mouse_move =
 
 // JERK ALERT: hard to pass input params for it without them just being the globals
 // ... so it just straight up uses the globals... optimization
-void() _sui_mouse1_down =
+float(float is_mouse = TRUE) _sui_mouse1_down =
 {
+	if (is_mouse)
+		activate_mouse_cursor();
+
 	// Cheap but it should work...
 	_cursor_click = _cursor_position;
 	_cursor_relative_click = _cursor_relative_hover;
-	for (int i = 0; i < _hover_action_count; i++) _hold_actions[i] = _hover_actions[i];
+	for (int i = 0; i < _hover_action_count; i++)
+		_hold_actions[i] = _hover_actions[i];
 	_hold_action_count = _hover_action_count;
 	_holding_click = TRUE;
 	_last_clicked_action_count = 0;
+
+	for (int i = 0; i < _action_elements_index; i++)
+	{
+		if (is_2dpoint_in_bbox(_cursor_position, _action_elements[i].pos, _action_elements[i].size))
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
 };
 
-void() _sui_mouse1_up =
+float(float is_mouse = TRUE) _sui_mouse1_up =
 {
+	if (is_mouse)
+		activate_mouse_cursor();
+
 	// Can't be cheap here, we have to get the action fn of the element anyway so..
 	_action_element_count_sanity();
 	
@@ -421,13 +466,135 @@ void() _sui_mouse1_up =
 	}
 	
 	// In case someone is keeping state on hold and wants to do stuff on release, even if cursor has moved
-	for (int i = 0; i < _hold_action_count; i++) _release_actions[i] = _hold_actions[i];
+	for (int i = 0; i < _hold_action_count; i++)
+		_release_actions[i] = _hold_actions[i];
+
 	_release_action_count = _hold_action_count;
 	_hold_action_count = 0;
 	_holding_click = FALSE;
+
+	if (_release_action_count > 0)
+		return TRUE;
+
+	return FALSE;
 };
 
-void(vector pos, vector size, string id, void(float index, vector click_ratios) action) sui_action_element =
+vector _sui_kb_move_dir;
+float _sui_hijacked_dirs;
+string _sui_default_kb_focus;
+const float KB_DIR_UP = 1;
+const float KB_DIR_DOWN = 2;
+const float KB_DIR_LEFT = 4;
+const float KB_DIR_RIGHT = 8;
+
+void(float kb_dir) sui_hijack_kb_move =
+{
+	_sui_hijacked_dirs |= kb_dir;
+}
+
+void(string id) sui_set_default_kb_focus =
+{
+	_sui_default_kb_focus = id;
+}
+
+float(vector dir) kb_dir_from_vec =
+{
+	if (vlen(dir) < 0.2) return 0;
+
+	if (fabs(dir.x) > fabs(dir.y))
+	{
+		if (dir.x > 0) return KB_DIR_RIGHT;
+		return KB_DIR_LEFT;
+	}
+	if (dir.y > 0) return KB_DIR_DOWN;
+	return KB_DIR_UP;
+}
+
+void() _retarget_kb_cursor =
+{
+	if (_action_elements_index == 0) return;
+
+	// retarget cursor
+	string target = _hover_action_count == 0 ? _sui_default_kb_focus : _hover_actions[0];
+	vector default_pos = _action_elements[0].pos + _action_elements[0].size * 0.5;
+	for (int i = 0; i < _action_elements_index; i++)
+	{
+		if (_action_elements[i].id == target)
+		{
+			_sui_mouse_move(_action_elements[i].pos + _action_elements[i].size * 0.5, FALSE);
+			return;
+		}
+		if (_action_elements[i].id == _sui_default_kb_focus)
+		{
+			default_pos = _action_elements[i].pos + _action_elements[i].size * 0.5;
+		}
+	}
+	_sui_mouse_move(default_pos, FALSE);
+}
+
+void(vector dir) _cursor_kb_move =
+{
+	deactivate_mouse_cursor();
+	_sui_kb_move_dir = dir;
+	
+	// for sliders and scroll lists
+	float kb_dir = kb_dir_from_vec(dir);
+	if (_sui_hijacked_dirs & kb_dir_from_vec(dir))
+	{
+		return;
+	}
+
+	// we calculate score for each other action element to see which other element we should move to if any
+	// score calculated via direction primarily (dot product), and distance secondarily
+	float best_score = 0;
+	float best_element_index = -1;
+	vector best_pos = _cursor_position;
+
+	for (int i = 0; i < _action_elements_index; i++)
+	{
+		if (_action_elements[i].kb_nav_disabled)
+			continue; // scroll bars etc usually
+		if (sui_hover_index(_action_elements[i].id) >= 0)
+			continue; // don't try to move to already focused element
+		if (_action_elements[i].size.x * _action_elements[i].size.y <= 0)
+			continue; // don't try to move to action elements with area zero or less (clipped elements mostly)
+
+		vector boxstart = _action_elements[i].pos;
+		vector boxend = _action_elements[i].pos + _action_elements[i].size;
+
+		vector center = (boxstart + boxend) * 0.5;
+		vector to_other = center - _cursor_position;
+		float dot_score = dir * normalize(to_other);
+		if (dot_score < 0)
+			continue; // don't try to select elements that are behind
+
+		float box_overlaps = fabs(dir.x) > fabs(dir.y) ?
+			_cursor_position.y >= boxstart.y && _cursor_position.y <= boxend.y :
+			_cursor_position.x >= boxstart.x && _cursor_position.x <= boxend.x;
+
+		if (box_overlaps)
+			dot_score = 1.0;
+		else if (dot_score < 0.7)
+			continue; // filter min dot more aggressively when box doesn't overlap direction
+
+		float dist_score = 1 / vlen(to_other);
+		float score = dot_score + dist_score;
+
+		if (score > best_score)
+		{
+			best_score = score;
+			best_element_index = i;
+			best_pos = center;
+		} 
+	}
+
+	if (best_score > 0)
+	{
+		_sui_mouse_move(best_pos, FALSE);	
+	}
+}
+
+void(vector pos, vector size, string id, void(float index, vector click_ratios) action, float is_kb_nav_disabled = FALSE) sui_action_element =
 {
 	if (!_sui_draw_initialized) 
 	{
@@ -459,7 +626,8 @@ void(vector pos, vector size, string id, void(float index, vector click_ratios) 
 	_action_elements[_action_elements_index].size = size;
 	_action_elements[_action_elements_index].id = id;
 	_action_elements[_action_elements_index].action = action;
-	
+	_action_elements[_action_elements_index].kb_nav_disabled = is_kb_nav_disabled;
+
 	_action_elements_index += 1;
 };
 
@@ -502,7 +670,40 @@ void() sui_clear_input =
 {
 	_input_length = 0;
 	_input_index = 0;
+	_sui_kb_move_dir = '0 0 0';
 };
+
+vector(float scan) sui_input_dir =
+{
+	string cmd = getkeybind(scan);
+	if (cmd == "+forward" || cmd == "+lookup" || scan == K_UPARROW || scan == K_GP_DPAD_UP)
+		return '0 -1 0';
+	if (cmd == "+back" || cmd == "+lookdown" || scan == K_DOWNARROW || scan == K_GP_DPAD_DOWN)
+		return '0 1 0';
+	if (cmd == "+moveleft" || cmd == "+lookleft" || scan == K_LEFTARROW || scan == K_GP_DPAD_LEFT)
+		return '-1 0 0';
+	if (cmd == "+moveright" || cmd == "+lookright" || scan == K_RIGHTARROW || scan == K_GP_DPAD_RIGHT)
+		return '1 0 0';
+	
+	return '0 0 0';
+}
+
+float(float scan) sui_input_is_confirm =
+{
+	string cmd = getkeybind(scan);
+	if (cmd == "+attack" || scan == K_ENTER || scan == K_GP_A)
+		return TRUE;
+	return FALSE;
+}
+
+float(float scan) sui_input_is_back =
+{
+	string cmd = getkeybind(scan);
+	if (cmd == "togglemenu" || scan == K_ESCAPE || scan == K_BACKSPACE || scan == K_GP_B)
+		return TRUE;
+	return FALSE;
+}
+
 
 float(float char, float scan) _sui_add_input =
 {
@@ -520,11 +721,125 @@ float(float char, float scan) _sui_add_input =
 	return TRUE;
 };
 
+
+float _scan_listens[MAX_INPUTS];
+float _scan_listen_count;
+
 // Listen to a certain keycode if it was pressed, this way sui know it was requested
-float(float keycode) sui_listen_keycode_down =
+float(float keycode) sui_listen_scan =
 {
+	_scan_listens[_scan_listen_count] = keycode;
+	_scan_listen_count += 1;
+	for (float i = 0; i < _input_length; i++)
+	{
+		if (_input_buffer[i].scan == keycode)
+			return TRUE;
+	}
 	return FALSE;
 };
+
+float(string command) sui_listen_command =
+{
+	float num_binds = tokenize(findkeysforcommand(command));
+	for (int i = 0; i < num_binds; i++)
+	{
+		float keycode = stof(argv(i));
+		_scan_listens[_scan_listen_count] = keycode;
+		_scan_listen_count += 1;
+		for (int j = 0; j < _input_length; j++)
+		{
+			if (_input_buffer[j].scan == keycode)
+			return TRUE;
+		}
+	}
+	return FALSE;
+};
+
+float() sui_listen_up = 
+{
+	return sui_listen_scan(K_UPARROW)
+		|| sui_listen_scan(K_GP_DPAD_UP)
+		|| sui_listen_scan(K_GP_LTHUMB_UP)
+		|| sui_listen_command("+forward");
+}
+
+float() sui_listen_down = 
+{
+	return sui_listen_scan(K_DOWNARROW)
+		|| sui_listen_scan(K_GP_DPAD_DOWN)
+		|| sui_listen_scan(K_GP_LTHUMB_DOWN)
+		|| sui_listen_command("+back");
+}
+
+float() sui_listen_left = 
+{
+	return sui_listen_scan(K_LEFTARROW)
+		|| sui_listen_scan(K_GP_DPAD_LEFT)
+		|| sui_listen_scan(K_GP_LTHUMB_LEFT)
+		|| sui_listen_command("+moveleft");
+}
+
+float() sui_listen_right = 
+{
+	return sui_listen_scan(K_RIGHTARROW)
+		|| sui_listen_scan(K_GP_DPAD_RIGHT)
+		|| sui_listen_scan(K_GP_LTHUMB_RIGHT)
+		|| sui_listen_command("+moveright");
+}
+
+float() sui_listen_confirm =
+{
+	return sui_listen_scan(K_ENTER)
+		|| sui_listen_scan(K_GP_A)
+		|| sui_listen_command("+attack")
+		|| sui_listen_command("+jump");
+}
+
+float() sui_listen_back =
+{
+	return sui_listen_scan(K_ESCAPE)
+		|| sui_listen_scan(K_GP_B)
+		|| sui_listen_command("togglemenu");
+}
+
+void() sui_menu_nav =
+{
+	if (sui_listen_up()) _cursor_kb_move('0 -1 0');
+	if (sui_listen_down()) _cursor_kb_move('0 1 0');
+	if (sui_listen_left()) _cursor_kb_move('-1 0 0');
+	if (sui_listen_right()) _cursor_kb_move('1 0 0');
+}
+
+float(float scanx, float chary) sui_block_all =
+{
+	return TRUE;
+}
+
+float(float scanx, float chary) sui_block_none =
+{
+	return FALSE;
+}
+
+float(float scanx, float chary) sui_block_menu_navigation =
+{
+	vector movedirs = sui_input_dir(scanx);
+	if (movedirs != '0 0 0') return TRUE;
+	if (sui_input_is_confirm) return TRUE;
+	if (sui_input_is_back) return TRUE;
+	return FALSE;
+}
+
+float(float scanx, float chary) sui_block_listened =
+{
+	for (int i = 0; i < _scan_listen_count; i++)
+	{
+		if (_scan_listens[i] == scanx)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
 
 // all text that was input between last and current frame
 string() sui_listen_text_input =
@@ -628,6 +943,9 @@ void(string command, string command_name) sui_start_bind =
 	_sui_binding_command_name = command_name;
 };
 
+
+var float(float scanx, float chary) sui_block_input_fn = sui_block_listened;
+
 // void(float evtype, float scanx, float chary, float devid) sui_input_event
 //	 same args is CSQC_InputEvent.
 //	 return value tells you if sui used the event or not, in case you want to
@@ -635,6 +953,7 @@ void(string command, string command_name) sui_start_bind =
 // Sets all the internal sui action stuff, call it in CSQC_InputEvent
 float(float evtype, float scanx, float chary, float devid) sui_input_event =
 {
+	float mouse_hit = FALSE;
 	switch (evtype)
 	{
 	case IE_MOUSEABS:
@@ -650,24 +969,20 @@ float(float evtype, float scanx, float chary, float devid) sui_input_event =
 		return FALSE;
 		break;
 	case IE_KEYDOWN:
+		vector keydir = sui_input_dir(scanx);
+		// We are binding, always swallow
 		if (_sui_binding_command != "")
-		{
-			// Nothing
 			return TRUE;
-		}
+		// Swallow only if we hit an action element
 		else if (scanx == K_MOUSE1)
-		{
-			_sui_mouse1_down();
-			return TRUE;
-		}
+			mouse_hit = _sui_mouse1_down();
+		// Don't return anything from these, use sui_block_input_fn to deal with rest
+		else if (sui_input_is_confirm(scanx))
+			_sui_mouse1_down(FALSE);
 		else
-		{
-			if ((scanx == K_ESCAPE || scanx == K_BACKSPACE) && _sui_binding_command != "")
-				return TRUE;
-			else if (scanx == K_ESCAPE)
-				return FALSE;
-			return _sui_add_input(chary, scanx);
-		}
+			_sui_add_input(chary, scanx);
+		
+		return mouse_hit || sui_block_input_fn(scanx, chary);
 		break;
 	case IE_KEYUP:
 		if (_sui_binding_command != "")
@@ -676,10 +991,10 @@ float(float evtype, float scanx, float chary, float devid) sui_input_event =
 			return TRUE;
 		}
 		else if (scanx == K_MOUSE1)
-		{
-			_sui_mouse1_up();
-			return TRUE;
-		}
+			mouse_hit = _sui_mouse1_up();
+		else if (sui_input_is_confirm(scanx))
+			_sui_mouse1_up(FALSE);
+		return mouse_hit || sui_block_input_fn(scanx, chary);
 		break;
 	default: 
 		break;
@@ -694,6 +1009,8 @@ float(float evtype, float scanx, float chary, float devid) sui_input_event =
 // Call it before your menu code per frame in your draw/updateview.
 void(float width, float height) sui_begin =
 {
+	_scan_listen_count = 0;
+	_sui_hijacked_dirs = 0;
 	_action_elements_index = 0;
 	_sui_draw_initialized = TRUE;
 	
@@ -702,6 +1019,7 @@ void(float width, float height) sui_begin =
 }
 
 void() sui_draw_bind_overlay;
+void() sui_debug_draw_action_elements;
 
 // void() sui_end
 // Call after your menu code per frame in your draw/updateview.
@@ -709,6 +1027,13 @@ void() sui_end =
 {
 	// Todo: move overlay drawing elsewhere:
 	sui_draw_bind_overlay();
+
+	// sui_debug_draw_action_elements();
+
+	if (!_cursor_is_mouse_active)
+	{
+		_retarget_kb_cursor();
+	}
 	// Dirty part:
 	_sui_draw_initialized = FALSE;
 	// reset "once" type actions
@@ -767,16 +1092,34 @@ float(string id, vector pos, vector size, vector minmaxsteps, float value, void(
 	float newvalue = value;
 	
 	sui_transform_box(pos, size);
+
 	// user is clicking and holding the slider
 	if (sui_is_held(id))
 	{
-		float min = minmaxsteps[0];
-		float max = minmaxsteps[1];
+		float minval = minmaxsteps[0];
+		float maxval = minmaxsteps[1];
 		float steps = minmaxsteps[2];
 		float click_ratio = (_cursor_position_x - pos_x) / size_x;
 		click_ratio = bound(0, click_ratio, 1);
 		if (steps > 0) click_ratio = rint(click_ratio * steps) / steps;
-		newvalue = min + click_ratio * (max - min);
+		newvalue = minval + click_ratio * (maxval - minval);
+		if (newvalue != value) action(newvalue);
+	}
+	else if (sui_is_hovered(id))
+	{
+		sui_hijack_kb_move(KB_DIR_LEFT);
+		sui_hijack_kb_move(KB_DIR_RIGHT);
+
+		float step = minmaxsteps[2] > 0
+			? (minmaxsteps[1] - minmaxsteps[0]) / minmaxsteps[2]
+			: max(0.01, (minmaxsteps[1] - minmaxsteps[0]) / size.x);
+		
+		if (sui_listen_left())
+			newvalue -= step;
+		if (sui_listen_right())
+			newvalue += step;
+		
+		newvalue = bound(minmaxsteps[0], newvalue, minmaxsteps[1]);
 		if (newvalue != value) action(newvalue);
 	}
 	return newvalue;
@@ -826,28 +1169,43 @@ void(string id, vector size, vector contentsize, __inout vector offset, vector s
 		}
 
 		sui_fill(barpos, barsize, '0.1 0.1 0.1' * (1 - sui_is_hovered(barname)), 0.66, 0);
-		sui_action_element(barpos, barsize, barname, sui_noop);
+		sui_action_element(barpos, barsize, barname, sui_noop, TRUE);
 		sui_pop_frame();
 	} 
 	sui_pop_frame();
 };
 
-void(string id, vector pos, vector size, vector contentsize, __inout vector offset, vector scrollbar_widths) sui_scroll_view_begin =
+void(string id, vector pos, vector size, vector contentsize, __inout vector offset, vector scrollbar_widths, float scroll_step = 22) sui_scroll_view_begin =
 {
 	// make space for scrollbars
 	sui_push_frame(pos, size - [scrollbar_widths_y, scrollbar_widths_x]);
-	sui_action_element([0, 0], size, id, sui_noop);
+	sui_action_element([0, 0], size, id, sui_noop, TRUE);
 	
 	if (sui_hover_index(id) > -1)
 	{		
+		vector boxmin = '0 0 0';
+		vector boxmax = size;
+		sui_transform_point(boxmin);
+		sui_transform_point(boxmax);
+		if ((boxmax.y - _cursor_position.y) <= scroll_step && _sui_kb_move_dir.y > 0) offset_y += scroll_step;
+		if ((_cursor_position.y - boxmin.y) <= scroll_step && _sui_kb_move_dir.y < 0) offset_y -= scroll_step;
+
 		float scrollamount = 0;
 		float char = 0;
 		float scan = 0;
 		sui_reread_input();
 		while (sui_get_input(char, scan))
 		{
-			if (scan == K_MWHEELUP) scrollamount -= 20;
-			if (scan == K_MWHEELDOWN) scrollamount += 20;
+			string cmd = getkeybind(scan);
+			if (scan == K_MWHEELUP)
+				scrollamount -= scroll_step;
+			if (scan == K_MWHEELDOWN)
+				scrollamount += scroll_step;
+			if ((boxmax.y - _cursor_position.y) <= scroll_step * 2 && sui_listen_down())
+				scrollamount += scroll_step;
+			if ((_cursor_position.y - boxmin.y) <= scroll_step * 2 && sui_listen_up())
+				scrollamount -= scroll_step;
+
 		}
 		offset_y += scrollamount;
 	}
@@ -884,7 +1242,7 @@ int _sui_list_index;
 void(string id, vector pos, vector size, vector itemsize, float numitems, __inout vector offset, vector scrollbar_widths) sui_list_view_begin =
 {
 	vector contentsize = [itemsize_x, itemsize_y * numitems];
-	sui_scroll_view_begin(id, pos, size, contentsize, offset, scrollbar_widths);
+	sui_scroll_view_begin(id, pos, size, contentsize, offset, scrollbar_widths, itemsize.y);
 	
 	_sui_list_item_height = itemsize_y;
 	float hidden_above = floor(offset_y / itemsize_y);
@@ -935,6 +1293,23 @@ void() sui_draw_bind_overlay =
 		sui_text([0, 16], [textsize - 4, textsize - 4], "ESC to cancel, BACKSPACE to remove", '1 1 1', 1, 0);
 	}
 };
+
+void() sui_debug_draw_action_elements =
+{
+	while (_frame_index > 1)
+		sui_pop_frame();
+	sui_reset_align();
+
+	for (int i = 0; i < _action_elements_index; i++)
+	{
+		sui_border_box(_action_elements[i].pos, _action_elements[i].size, 1, '1 0 0', 0.25, 0);
+		sui_fill(_action_elements[i].pos + _action_elements[i].size * 0.5 - [1, 1], [2, 2], '0 1 0', 0.5, 0);
+		sui_push_frame(_action_elements[i].pos, _action_elements[i].size);
+		sui_set_align([SUI_ALIGN_CENTER, SUI_ALIGN_CENTER]);
+		sui_text([0, -4], [8, 8], _action_elements[i].id, '1 0 0', 0.75, 0);
+		sui_pop_frame();
+	}
+}
 
 
 // -------------------- END OF SUI SYSTEM STUFF --------------------

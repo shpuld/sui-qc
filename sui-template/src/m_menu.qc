@@ -66,7 +66,7 @@ void(string id, vector pos, vector size, float maxlen, __inout string text, __in
 float(string id, vector pos, vector size, string text) my_button =
 {
 	sui_push_frame(pos, size);
-	vector basecolor = sui_is_hovered(id) ? MENU_BUTTON + MENU_HIGHLIGHT * 0.1 : MENU_BUTTON; 
+	vector basecolor = sui_is_hovered(id) ? MENU_BUTTON + MENU_HIGHLIGHT * 0.25 : MENU_BUTTON; 
 	basecolor = sui_is_held(id) ? MENU_BUTTON - MENU_DARKEN * 0.1 : basecolor;
 	sui_fill([0, 0], size, basecolor, 0.6, 0);
 	sui_border_box([0, 0], size, 1, MENU_BUTTON_BORDER, 0.4, 0);
@@ -90,7 +90,7 @@ void(string id, vector pos, vector size, vector minmaxsteps, __inout float value
 	sui_fill([0, size_y * 0.25], [size_x, size_y * 0.5], MENU_BG_DARK, 1.0, 0);
 	
 	float is_active = sui_is_held(id) || (sui_is_hovered(id) && !sui_click_held());
-	vector slider_ctrl_color = is_active ? MENU_BUTTON + MENU_HIGHLIGHT * 0.1 : MENU_BUTTON;
+	vector slider_ctrl_color = is_active ? MENU_BUTTON + MENU_HIGHLIGHT * 0.2 : MENU_BUTTON;
 	sui_fill([sliderx - 2, 0], [4, size_y], slider_ctrl_color, 1.0, 0);
 	
 	sui_pop_frame();
@@ -120,7 +120,17 @@ name_command bindlist[] =
 	{ "Back", "+back" },
 	{ "Left", "+moveleft" },
 	{ "Right", "+moveright" },
-	{ "Jump", "+jump" }
+	{ "Jump", "+jump" },
+	{ "Jump1", "+jump" },
+	{ "Jump2", "+jump" },
+	{ "Jump3", "+jump" },
+	{ "Jump4", "+jump" },
+	{ "Jump5", "+jump" },
+	{ "Jump6", "+jump" },
+	{ "Jump7", "+jump" },
+	{ "Jump8", "+jump" },
+	{ "Jump9", "+jump" },
+	{ "Jump0", "+jump" },
 };
 
 void(string id, vector pos, vector size, string name, string command) bind_button =
@@ -177,17 +187,7 @@ void() settings_menu =
 	float xpos = 8;
 	float ypos = 32;
 	float width = size_x * 0.5 - 8 * 2;
-	sui_text([xpos, ypos], MENU_TEXT_SMALL, "Controls", MENU_TEXT_1, 1, 0);
-	ypos += 16;
-	bind_list("bindlist", [xpos, ypos], [width, 160], binds_scroll);
-	ypos += 160 + 8;
 
-	cvar_slider([xpos, ypos], [width, 32], [0.1, 10], "sensitivity", "Sensitivity", "%.2f");
-	ypos += 32;
-
-	ypos = 32;
-	xpos = 8 + width + 8 + 8;
-	
 	cvar_slider([xpos, ypos], [width, 32], [0, 1], "volume", "Volume", "%.2f");
 	ypos += 32 + 4;
 	cvar_slider([xpos, ypos], [width, 32], [0, 1], "musicvolume", "Music Volume", "%.2f");
@@ -201,8 +201,25 @@ void() settings_menu =
 	ypos += 24;
 	sui_text([xpos, ypos], MENU_TEXT_SMALL, "Window can be resized.", MENU_TEXT_1, 0.8, 0);
 	ypos += 16;
-	sui_set_align([SUI_ALIGN_END, SUI_ALIGN_END]);
-	my_button("stg_back", [-8, -8], [80, 20], "Back") ? current_menu = MENU_MAIN : 0;
+
+	ypos = 32;
+	xpos = 8 + width + 8 + 8;
+	
+	sui_text([xpos, ypos], MENU_TEXT_SMALL, "Controls", MENU_TEXT_1, 1, 0);
+	ypos += 16;
+	bind_list("bindlist", [xpos, ypos], [width, 160], binds_scroll);
+	ypos += 160 + 8;
+
+	cvar_slider([xpos, ypos], [width, 32], [0.1, 10], "sensitivity", "Sensitivity", "%.2f");
+	ypos += 32;
+
+	sui_set_align([SUI_ALIGN_START, SUI_ALIGN_END]);
+	my_button("stg_back", [8, -8], [80, 20], "Back") ? current_menu = MENU_MAIN : 0;
+
+	sui_set_default_kb_focus("volume");
+
+	if (sui_listen_back())
+		current_menu = MENU_MAIN;
 	
 	sui_pop_frame();
 };
@@ -226,6 +243,9 @@ void() help_menu =
 	
 	sui_set_align([SUI_ALIGN_END, SUI_ALIGN_END]);
 	my_button("hlp_back", [-8, -8], [80, 20], "Back") ? current_menu = MENU_MAIN : 0;
+
+	if (sui_listen_back())
+		current_menu = MENU_MAIN;
 
 	sui_pop_frame();	
 };
@@ -251,6 +271,8 @@ void() main_menu =
 	sui_set_align([SUI_ALIGN_CENTER, SUI_ALIGN_END]);
 	my_button("mm_quit", [0, -8], [size_x - 16, 20], "Quit") ? localcmd("quit\n") : 0;
 	sui_pop_frame();	
+
+	sui_set_default_kb_focus("mm_start");
 };
 
 void(vector size) root_menu =
