@@ -45,11 +45,16 @@ void(float width, float height, float menushown) CSQC_UpdateView =
 	//does what you think it does
 	renderscene();
 	
-	/*sui_pre_draw(g_width, g_height);
+	/*
+	sui_begin(g_width, g_height);
 	
-	test_sui_system();
+	// Insert your own sui code here even for CSQC
+	// Make sure to uncomment sui_input_event as well.
 	
-	sui_draw();*/
+	sui_menu_nav();
+	
+	sui_end();
+	*/
 };
 
 float(string cmd) CSQC_ConsoleCommand =

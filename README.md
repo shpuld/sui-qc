@@ -182,27 +182,42 @@ Creates a text input that you can click on to focus and type in. You have to pro
 
 `void(string id, vector size, vector contentsize, __inout vector offset, vector scrollbar_widths) sui_scrollbar`
 
-Documentation coming soon.
+Used for scroll views, you probably won't ever need to call it manually. Should probably be private.
 
 `void(string id, vector pos, vector size, vector contentsize, __inout vector offset, vector scrollbar_widths) sui_scroll_view_begin`
 
-Documentation coming soon.
+More advanced component for creating scrollabe areas, handles clipping stuff outside the visible area and making them not clickable. Example found in sui_sys.qc used for `sui_list_view_begin/end`
+`id` unique id for this area.
+`pos` and `size` the usual position and size of the area as it is drawn, not the content inside it.
+`contentsize` is the size of the scrollable area contained within, supposed to be larger than the drawn area.
+`offset` is an offset value mutated based on various scroll inputs including the scroll bar. Persist this over frames to maintain the state.
+`scrollbar_widths` Sizes of the scrollbar, right now only Y value matters as X scrollbar is not drawn.
 
 `void() sui_scroll_view_end`
 
-Documentation coming soon.
+Call after you're done drawing the contents of your scroll area.
 
 `void(string id, vector pos, vector size, vector itemsize, float numitems, __inout vector offset, vector scrollbar_widths) sui_list_view_begin`
 
-Documentation coming soon, you can find usage of it in the Settings menu of the template.
+For creating scrollable lists of uniform sized items, check the settings menu code in m_menu.qc for an example.
+You must call this before starting your list view, then iterate through your list items using `sui_list_item` and finish with `sui_list_view_end`.
+Does NOT support scrollable areas within scrollable areas.
+`id` is the unique element id of this list.
+`pos`, `size` for placing it.
+`itemsize` is the size of an individual item in the list.
+`numitems` for how many items there are in the list.
+`offset` is the scroll offset of the list that will be mutated based on input, you need to persist this value over frames.
+`scrollbar_widths` the size of scrollbars, although you usually just want y for the vertical scrollbar.
 
 `float(__inout vector pos) sui_list_item`
 
-Documentation coming soon, you can find usage of it in the Settings menu of the template.
+For items used with `sui_list_view_begin`, check the settings menu code in m_menu.qc for an example.
+Increases the index in the list you're iterating every time you call it, returns that index.
+`pos` is a vector that will be set to the coordinates of where the list item should be drawn.
 
 `void() sui_list_view_end`
 
-Documentation coming soon, you can find usage of it in the Settings menu of the template.
+For finish list drawn with `sui_list_view_begin`, check the settings menu code in m_menu.qc for an example.
 
 `string(string id, vector pos, vector size, string name, string command) sui_binder`
 
